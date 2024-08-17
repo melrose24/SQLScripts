@@ -1,0 +1,67 @@
+USE $DATABASE;
+
+WITH CTE
+AS (
+	SELECT DP_Name = (UPPER(SUBSTRING(PkgDistribution.ServerNALPath, 13, CHARINDEX('.', PkgDistribution.ServerNALPath) - 13)))
+		,Not_Installed = (
+			COUNT(CASE 
+					WHEN PkgDistribution.STATE NOT IN (
+							'0'
+							,'3'
+							,'6'
+							)
+						THEN '*'
+					ELSE 'Unknown'
+					END)
+			)
+		,Error = (
+			COUNT(CASE 
+					WHEN PkgDistribution.STATE IN (
+							'3'
+							,'6'
+							)
+						THEN '*'
+					END)
+			)
+		,STATUS = (
+			CASE 
+				WHEN PkgDistribution.STATE = '0'
+					THEN '1' --'OK'
+				WHEN PkgDistribution.STATE NOT IN (
+						'0'
+						,'3'
+						,'6'
+						)
+					THEN '2' --'In_Progress'
+				WHEN PkgDistribution.STATE IN (
+						'3'
+						,'6'
+						)
+					THEN '3' --'Error'
+				END
+			)
+	FROM dbo.v_PackageStatusDistPointsSumm AS PkgDistribution
+		,dbo.SMSPackages AS Packages
+	WHERE Packages.PackageType != 4
+		AND (Packages.PkgID = PkgDistribution.PackageID)
+	GROUP BY PkgDistribution.ServerNALPath
+		,PkgDistribution.STATE
+	)
+SELECT PKG_Not_Installed = SUM(Not_Installed)
+	,PKG_Error = SUM(Error)
+	,DP_OK = (
+		SELECT COUNT(DP_Name)
+		FROM CTE
+		WHERE STATUS = '1'
+		)
+	,DP_In_Progress = (
+		SELECT COUNT(DP_Name)
+		FROM CTE
+		WHERE STATUS = '2'
+		)
+	,DP_Error = (
+		SELECT COUNT(DP_Name)
+		FROM CTE
+		WHERE STATUS = '3'
+		)
+FROM CTE;
